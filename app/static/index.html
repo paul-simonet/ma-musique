@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ma semaine en vinyles</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..800,100,1&family=DM+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="light" id="light" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="stripes" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>La semaine de <span id="user">…</span></h1>
+    <p class="sub" id="summary">Je sors les disques…</p>
+  </header>
+
+  <p class="banner" id="banner" hidden></p>
+
+  <main class="room">
+    <section class="corner" aria-label="La platine">
+      <div class="deck" id="deck">
+        <div class="plinth">
+          <div class="plate">
+            <div class="platter">
+              <div class="record" id="record">
+                <div class="label" id="label"><span class="label-text" id="label-text"></span></div>
+                <div class="spindle"></div>
+              </div>
+              <div class="sheen" aria-hidden="true"></div>
+            </div>
+
+            <svg class="tonearm" id="tonearm" viewBox="0 0 120 660" aria-hidden="true">
+              <rect x="44" y="0" width="32" height="44" rx="6" class="arm-weight"/>
+              <circle cx="60" cy="60" r="34" class="arm-base"/>
+              <circle cx="60" cy="60" r="14" class="arm-cap"/>
+              <path d="M60 60 L60 500 Q60 530 50 560" class="arm-tube"/>
+              <path d="M38 550 L66 556 L60 612 L34 606 Z" class="arm-head"/>
+            </svg>
+
+            <div class="controls">
+              <span class="power" id="power" title="En lecture"></span>
+              <span class="speed">33⅓</span>
+              <span class="knob"></span>
+              <span class="knob"></span>
+            </div>
+            <div class="brand">PAULSIM · 7</div>
+          </div>
+        </div>
+      </div>
+
+      <article class="card" id="card" aria-live="polite">
+        <p class="kicker" id="kicker">—</p>
+        <h2 id="title">—</h2>
+        <p class="meta" id="meta"></p>
+        <ol class="tracks" id="tracks"></ol>
+        <button class="back" id="back" type="button" hidden>↩ Revenir au direct</button>
+      </article>
+    </section>
+
+    <section class="cabinet" aria-label="L'étagère de la semaine">
+      <div class="shelves" id="shelves"></div>
+      <ul class="legend">
+        <li><b class="lg lg-thick"></b>Épaisseur = nombre d'écoutes</li>
+        <li><b class="lg lg-row"></b>Un rayon = un jour</li>
+        <li><b class="lg lg-dust"></b>Poussière = pas réécouté depuis</li>
+        <li><b class="lg lg-love">♥</b>Post-it = coup de cœur</li>
+        <li><b class="lg lg-light"></b><span id="light-legend">Lumière = heure de ta dernière écoute</span></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="foot">Données Last.fm, récupérées par mon serveur · ← → pour feuilleter, Échap pour le direct</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

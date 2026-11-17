@@ -1,0 +1,12 @@
+services:
+  web:
+    build: ./app
+    ports:
+      - "8080:8000"
+    env_file:
+      - path: .env
+        required: false   # sans .env, l'appli démarre quand même et explique ce qui manque
+    environment:
+      CACHE_SECONDS: "45"
+      TIMEZONE: Europe/Paris
+    restart: unless-stopped
