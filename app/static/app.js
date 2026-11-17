@@ -15,7 +15,10 @@ async function load() {
     render();
     showBanner(body.stale ? `Last.fm ne répond pas : j'affiche les disques de ${clock(body.fetched_at)}.` : "");
   } catch (err) {
-    const message = err instanceof TypeError ? "Le serveur ne répond pas." : err.message;
+    // jamais de message technique à l'écran : une phrase claire selon le cas
+    const message = err instanceof TypeError ? "Le serveur ne répond pas."
+                  : err instanceof SyntaxError ? "Le serveur a renvoyé une réponse illisible."
+                  : err.message;
     if (state.data) showBanner(`${message} J'affiche les derniers disques connus.`);
     else renderEmpty(message);
   }
@@ -29,7 +32,6 @@ function showBanner(text) {
 // ---------------------------------------------------------------- rendu
 function render() {
   const d = state.data;
-  $("summary").textContent = `${d.user} · ${d.total_plays} écoute${d.total_plays > 1 ? "s" : ""} sur 7 jours`;
   renderShelves(d);
   renderDeck();
   renderStats(d);
@@ -66,22 +68,63 @@ function renderStats(d) {
 }
 
 // La bibliothèque se lit comme un livre : casier de gauche puis de droite, étage par étage.
-// Tous les disques de la journée s'y suivent dans l'ordre, séparés par des intercalaires d'heure.
+// Les disques s'y suivent dans l'ordre choisi, séparés par des intercalaires.
 const COMPARTMENTS = [["a", 1], ["b", 1], ["a", 2], ["b", 2], ["a", 3], ["b", 3]];
+
+// Les 4 façons de ranger la bibliothèque : l'ordre des disques + le texte des intercalaires
+const SORTS = {
+  time:  { legend: "Se lit comme un livre, dans l'ordre de la journée",
+           order: (x, y) => x.minute - y.minute,
+           tab: (a) => `${Math.floor(a.minute / 60)}h` },
+  genre: { legend: "Rangé par genre (selon Deezer), puis dans l'ordre de la journée",
+           order: (x, y) => genreOf(x).localeCompare(genreOf(y), "fr") || x.minute - y.minute,
+           tab: (a) => genreOf(a) },
+  alpha: { legend: "Rangé par ordre alphabétique des albums",
+           order: (x, y) => x.album.localeCompare(y.album, "fr", { sensitivity: "base" }),
+           tab: (a) => { const c = a.album.normalize("NFD")[0]?.toUpperCase() || "#"; return /[A-Z]/.test(c) ? c : "#"; } },
+  plays: { legend: "Rangé du plus écouté au moins écouté",
+           order: (x, y) => y.plays - x.plays || x.album.localeCompare(y.album, "fr"),
+           tab: (a) => a.plays >= 10 ? "10+ fois" : a.plays >= 5 ? "5–9 fois" : a.plays >= 2 ? "2–4 fois" : "1 fois" },
+};
+let sortMode = "time";
+try { sortMode = SORTS[localStorage.getItem("sort")] ? localStorage.getItem("sort") : "time"; } catch {}
+
+function genreOf(album) {
+  const info = infoCache.get(`album|${album.artist}|${album.album}`);
+  return (info && info.genre) || (info ? "Autres" : "…");
+}
+
+function albumsFor(d) {
+  // par heure : un album écouté le matin et le soir apparaît aux deux moments.
+  // pour les autres rangements : un seul exemplaire par album, avec le total des écoutes.
+  const all = d.shelves.flatMap((shelf) => shelf.albums.map((a) => ({ ...a, shelfLabel: shelf.label })));
+  if (sortMode === "time") return all;
+  const merged = new Map();
+  for (const a of all) {
+    const m = merged.get(a.key);
+    if (!m) merged.set(a.key, { ...a, id: a.key });
+    else { m.plays += a.plays; m.loved = m.loved || a.loved; m.minute = Math.min(m.minute, a.minute); m.cover = m.cover || a.cover; }
+  }
+  return [...merged.values()];
+}
 
 function renderShelves(d) {
   document.querySelectorAll(".shelf").forEach((n) => n.remove());
+  document.body.classList.remove("closed");
   state.sleeves = [];
+  const sort = SORTS[sortMode];
+  document.querySelectorAll(".sort button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sort === sortMode));
 
-  // 1. une seule file : intercalaire « 10 h », puis les albums de 10 h, intercalaire « 11 h »…
-  const albums = d.shelves.flatMap((shelf) => shelf.albums.map((album) => ({ album, shelf })))
-                          .sort((x, y) => x.album.minute - y.album.minute);
+  // 1. une seule file : intercalaire, puis ses albums, intercalaire suivant…
+  const albums = albumsFor(d).sort(sort.order);
   const items = [];
-  let hour = -1;
-  for (const entry of albums) {
-    const h = Math.floor(entry.album.minute / 60);
-    if (h !== hour) { items.push({ divider: h }); hour = h; }
-    items.push(entry);
+  const groups = new Map();                     // intercalaire -> ses albums (pour la bulle d'info)
+  let last = null;
+  for (const album of albums) {
+    const tab = sort.tab(album);
+    if (tab !== last) { items.push({ divider: tab }); last = tab; groups.set(tab, []); }
+    groups.get(tab).push(album);
+    items.push({ album });
   }
 
   // 2. on répartit la file sur les 6 casiers, à parts égales, pour remplir toute la bibliothèque
@@ -94,47 +137,91 @@ function renderShelves(d) {
   // 3. on dessine chaque casier
   const row = el("div", "shelf");
   COMPARTMENTS.forEach(([side, r], c) => {
-    const wing = el("div", `wing ${side}`);
-    wing.style.setProperty("--r", r);
-    const track = el("div", "track");
+    const wing = makeWing(side, r, c);
+    const track = wing.querySelector(".track");
     const chunk = chunks[c];
     chunk.forEach((item, k) => {
-      const node = item.divider !== undefined ? makeDivider(item.divider) : makeSlot(item.album, item.shelf);
+      const node = item.divider !== undefined ? makeDivider(item.divider, groups.get(item.divider)) : makeSlot(item.album);
       node.style.setProperty("--f", chunk.length > 1 ? k / (chunk.length - 1) : 0.5);    // toute la largeur
-      node.style.zIndex = k + 1;                                                          // les plus tardifs devant
+      node.style.zIndex = k + 1;                      // les disques de devant cachent le bas de l'intercalaire
       track.append(node);
-      if (item.album) state.sleeves.push({ el: node, album: item.album, shelf: item.shelf });
+      if (item.album) state.sleeves.push({ el: node, album: item.album });
     });
-    wing.append(track, el("div", "board"));
     if (!chunk.length) wing.classList.add("dark");                                        // casier vide : LED éteinte
     if (!albums.length && c === 0) wing.append(el("span", "quiet", "Pas encore d'écoute cette semaine"));
-    // deux plantes : au tout début et à la toute fin de la journée
-    const plant = c === 0 ? ["snake", "start"] : c === 5 ? ["pilea", "end"] : null;
-    if (plant) {
-      wing.classList.add(`decor-${plant[1]}`);
-      wing.insertAdjacentHTML("beforeend", PLANTS[plant[0]].replace("<svg", `<svg class="plant ${plant[1]}"`));
-    }
     row.append(wing);
   });
   $("bookcase").append(row);
+
+  if (sortMode === "genre") loadGenres(albums);
 }
 
-function makeDivider(hour) {
-  // un intercalaire en carton, avec un onglet qui dépasse : « 10 h »
-  const div = el("div", "divider");
-  div.setAttribute("aria-label", `À partir de ${hour} h`);
+function makeWing(side, r, c) {
+  const wing = el("div", `wing ${side}`);
+  wing.style.setProperty("--r", r);
+  wing.append(el("div", "track"), el("div", "board"));
+  // deux plantes : au tout début et à la toute fin de la bibliothèque
+  const plant = c === 0 ? ["snake", "start"] : c === 5 ? ["pilea", "end"] : null;
+  if (plant) {
+    wing.classList.add(`decor-${plant[1]}`);
+    wing.insertAdjacentHTML("beforeend", PLANTS[plant[0]].replace("<svg", `<svg class="plant ${plant[1]}"`));
+  }
+  return wing;
+}
+
+let genresLoading = false;
+async function loadGenres(albums) {
+  // les genres viennent de Deezer, via notre serveur ; on ne les demande qu'une fois, 4 à la fois
+  const missing = albums.filter((a) => !infoCache.has(`album|${a.artist}|${a.album}`));
+  if (!missing.length || genresLoading) return;
+  genresLoading = true;
+  const queue = missing.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const a = queue.shift();
+      const key = `album|${a.artist}|${a.album}`;
+      try { infoCache.set(key, await (await fetch(`/api/album?artist=${encodeURIComponent(a.artist)}&album=${encodeURIComponent(a.album)}`)).json()); }
+      catch { infoCache.set(key, {}); }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  genresLoading = false;
+  if (sortMode === "genre" && state.data) renderShelves(state.data);
+}
+
+function setSort(mode) {
+  if (!SORTS[mode] || !state.data) return;
+  sortMode = mode;
+  try { localStorage.setItem("sort", mode); } catch {}
+  state.selected = null;
+  renderShelves(state.data);
+  renderDeck();
+}
+document.querySelectorAll(".sort button").forEach((b) => b.addEventListener("click", () => setSort(b.dataset.sort)));
+
+function makeDivider(text, albums = []) {
+  // un intercalaire en carton avec son onglet ; on peut le « sortir » pour voir son groupe
+  const div = el("button", "divider");
+  div.type = "button";
+  const plays = albums.reduce((n, a) => n + a.plays, 0);
+  const summary = `${albums.length} album${albums.length > 1 ? "s" : ""} · ${plays} écoute${plays > 1 ? "s" : ""}`;
+  div.setAttribute("aria-label", `${text} : ${summary}`);
   const card = el("span", "card-div");
-  card.append(el("span", "tab", `${hour}h`));
+  card.append(el("span", "tab", text));
   div.append(card);
+  div.addEventListener("mouseenter", (e) => showTip(e, null, [text, summary, albums.slice(0, 3).map((a) => a.album).join(", ") + (albums.length > 3 ? "…" : "")]));
+  div.addEventListener("mousemove", moveTip);
+  div.addEventListener("mouseleave", hideTip);
+  div.addEventListener("click", () => albums[0] && select(albums[0].id));   // clic : le 1er disque du groupe
   return div;
 }
 
-function makeSlot(album, shelf) {
+function makeSlot(album) {
   // le bouton (zone cliquable fixe) contient la pochette, qui seule s'anime : plus de clignotement au survol
   const slot = el("button", "slot");
   slot.type = "button";
   slot.style.setProperty("--color", colorFor(album.key));
-  slot.setAttribute("aria-label", `${album.album}, ${album.artist}, ${album.plays} écoute(s), ${shelf.label.toLowerCase()}`);
+  slot.setAttribute("aria-label", `${album.album}, ${album.artist}, ${album.plays} écoute(s)`);
 
   const sleeve = el("span", "sleeve");
   const front = el("span", "front generic");                                              // pochette carton en attendant
@@ -165,7 +252,7 @@ function renderDeck() {
 
   let cover, name, kicker, title, meta;
   if (pick) {
-    const { album, shelf } = pick;
+    const { album } = pick;
     cover = coverUrl(album.cover, album.artist, album.album); name = album.album;
     kicker = `Sorti de l'étagère · ${hhmm(album.minute)}`;
     title = album.album; meta = `${album.artist} · ${album.plays} écoute${album.plays > 1 ? "s" : ""} cette semaine`;
@@ -263,17 +350,33 @@ function paintInfo(info, kind) {
   const facts = [];
   if (info.duration) facts.push(`${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}`);
   if (info.track_count) facts.push(`${info.track_count} titres`);
-  if (info.tags && info.tags[0]) facts.push(info.tags[0].toLowerCase());
+  if (info.genre) facts.push(info.genre);
   $("facts").replaceChildren(...facts.slice(0, 2).map((f) => el("li", "", f)));
 }
 
 function renderEmpty(message) {
-  showBanner(message);
-  $("summary").textContent = "";
+  // pas encore de données et pas de serveur : la bibliothèque reste fermée, portes closes
+  showBanner("");
+  document.body.classList.add("closed");
+  $("onair").classList.remove("on");
   $("kicker").textContent = "Pas de signal";
-  $("title").textContent = "Last.fm est injoignable";
+  $("title").textContent = "Le studio est fermé";
   $("meta").textContent = `${message} La page réessaie toute seule toutes les 30 secondes.`;
-  $("record-text").textContent = "Pas de signal";
+  $("record-text").textContent = "";
+  $("clock").replaceChildren();
+  $("tiles").replaceChildren(el("li", "wait", "Les chiffres reviendront avec la musique."));
+  document.querySelectorAll(".shelf").forEach((n) => n.remove());
+  const row = el("div", "shelf");
+  COMPARTMENTS.forEach(([side, r], c) => {
+    const wing = makeWing(side, r, c);
+    wing.classList.add("dark");
+    const doors = el("div", "doors");
+    doors.append(el("span", "door left"), el("span", "door right"));
+    if (c === 0) doors.append(el("span", "sign", "Fermé"));
+    wing.append(doors);
+    row.append(wing);
+  });
+  $("bookcase").append(row);
 }
 
 // ---------------------------------------------------------------- navigation
@@ -288,7 +391,7 @@ document.addEventListener("keydown", (e) => {
   if (!state.sleeves.length) return;
   if (e.key === "Escape") return select(null);
   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-  const order = state.sleeves.slice().sort((a, b) => a.album.minute - b.album.minute);  // dans l'ordre de la journée
+  const order = state.sleeves;                     // l'ordre affiché, quel que soit le rangement choisi
   const i = order.findIndex((s) => s.album.id === state.selected);
   const step = e.key === "ArrowRight" ? 1 : -1;
   const next = i === -1 ? (step > 0 ? 0 : order.length - 1) : (i + step + order.length) % order.length;
@@ -298,19 +401,23 @@ document.addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- bulle d'info
 let tip;
-function showTip(e, album) {
+function showTip(e, album, lines) {
   hideTip();
   tip = el("div", "tip");
-  const first = hhmm(album.minute);
-  tip.append(el("strong", "", album.album), el("small", "", album.artist),
-             el("small", "", `${album.plays} écoute${album.plays > 1 ? "s" : ""} · dès ${first}${album.loved ? " · ♥" : ""}`));
+  if (album) {
+    lines = [album.album, album.artist,
+             `${album.plays} écoute${album.plays > 1 ? "s" : ""} · dès ${hhmm(album.minute)}${album.loved ? " · ♥" : ""}`];
+  }
+  tip.append(el("strong", "", lines[0]), ...lines.slice(1).filter(Boolean).map((l) => el("small", "", l)));
+  if (!album) tip.dataset.below = "1";          // sous la souris : on ne cache pas l'onglet qu'on vient de sortir
   document.body.append(tip);
   moveTip(e);
 }
 function moveTip(e) {
   if (!tip) return;
   tip.style.left = `${Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)}px`;
-  tip.style.top = `${Math.max(8, e.clientY - tip.offsetHeight - 14)}px`;
+  tip.style.top = tip.dataset.below ? `${Math.min(innerHeight - tip.offsetHeight - 8, e.clientY + 22)}px`
+                                    : `${Math.max(8, e.clientY - tip.offsetHeight - 14)}px`;
 }
 function hideTip() { tip?.remove(); tip = null; }
 

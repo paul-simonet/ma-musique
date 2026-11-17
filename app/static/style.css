@@ -66,7 +66,7 @@ h1 {
   grid-template-rows: repeat(3, minmax(0, 1fr));
   flex: 1; min-height: 0;
   gap: var(--frame);
-  margin: 0 clamp(12px, 3vw, 40px);
+  margin: 0 clamp(12px, 3vw, 40px) clamp(12px, 2.5vh, 28px);
   padding: var(--frame);
   border-radius: 6px;
   background: var(--grain-v), linear-gradient(90deg, #45291a, #3a2213 50%, #45291a);
@@ -187,25 +187,43 @@ h1 {
 .slot.selected .front { box-shadow: 0 0 0 3px var(--orange), 0 16px 24px rgba(0,0,0,.6); }
 .slot:hover .front { box-shadow: 0 16px 24px rgba(0,0,0,.6); }
 
-/* ---------- Intercalaires d'heure ---------- */
+/* ---------- Intercalaires : un carton épais avec son onglet, d'une seule pièce ---------- */
 .divider {
   position: absolute; bottom: 14px; left: calc((100% - var(--sleeve)) * var(--f));
-  width: var(--sleeve); height: calc(var(--sleeve) * .92); pointer-events: none;
+  width: var(--sleeve); height: calc(var(--sleeve) * .96);
+  padding: 0; border: 0; background: none; cursor: pointer;
   perspective: 1000px;
 }
+.divider:hover, .divider:focus-visible { z-index: 100 !important; outline: none; }
 .card-div {
   position: absolute; inset: 0; display: block;
   transform-origin: 50% 100%; transform: rotateY(28deg);
-  background: linear-gradient(105deg, rgba(255,255,255,.25), transparent 40%, rgba(0,0,0,.15)), #e6d6b0;   /* carton clair : jamais confondu avec une pochette */
-  border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 4px 0 6px rgba(0,0,0,.35);
+  transition: transform .25s cubic-bezier(.3,.7,.3,1);
+  border-radius: 0 3px 2px 2px;
+  background:
+    radial-gradient(rgba(120,90,50,.18) .8px, transparent 1.2px) 0 0 / 5px 5px,      /* fibres du carton */
+    linear-gradient(105deg, rgba(255,255,255,.22), transparent 38%, rgba(0,0,0,.14)),
+    #e9dbb8;
+  box-shadow: inset 0 0 0 1px rgba(90,60,30,.25), 4px 0 8px rgba(0,0,0,.4);
 }
-.tab {
-  position: absolute; left: 0; top: -22px; height: 24px; padding: 0 8px;
-  display: grid; place-items: center; border-radius: 5px 5px 0 0; white-space: nowrap;
-  background: var(--orange); color: #1c120b;
+.card-div::after {          /* le filet imprimé sous l'onglet */
+  content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 3px; background: var(--orange); opacity: .85;
+}
+.tab {                      /* l'onglet fait partie du carton : il bouge et pivote avec lui */
+  position: absolute; left: 0; bottom: 100%; margin-bottom: -1px;
+  height: 22px; padding: 0 10px; max-width: 100%;
+  display: flex; align-items: center; white-space: nowrap; overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  background:
+    radial-gradient(rgba(120,90,50,.18) .8px, transparent 1.2px) 0 0 / 5px 5px,
+    linear-gradient(180deg, rgba(255,255,255,.3), transparent 60%),
+    #e9dbb8;
+  box-shadow: inset 1px 1px 0 rgba(90,60,30,.25), inset -1px 0 0 rgba(90,60,30,.25);
   font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.3);
+  color: #3a2212;
 }
+/* on sort l'intercalaire pour le lire */
+.divider:hover .card-div, .divider:focus-visible .card-div { transform: translateY(-18px) rotateY(0deg); }
 
 /* casier vide : la LED est éteinte */
 .wing.dark::before { background: rgba(var(--led), .15); box-shadow: none; }
@@ -247,14 +265,46 @@ h1 {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(60% 45% at 50% 0%, rgba(var(--led), .2), transparent 75%); mix-blend-mode: screen;
 }
-.stage { position: relative; z-index: 2; width: var(--d); perspective: 1100px; perspective-origin: 50% -30%; }
-.deck {
-  position: relative; width: 100%; aspect-ratio: 1 / .78;
-  transform-origin: 50% 100%; transform: rotateX(38deg);
-  border-radius: 6px; padding: 5%;
-  background: var(--grain-h), linear-gradient(90deg, #4a2c18, #57351d 50%, #4a2c18);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5);
+/* ---------- La platine : une boîte en 3D, vue un peu de dessus ---------- */
+.stage {
+  --T: calc(var(--d) * .2);                   /* épaisseur du socle */
+  position: relative; z-index: 2; width: var(--d);
+  height: calc(var(--d) * .62 + var(--T) * .5);   /* la hauteur visible une fois inclinée */
+  margin-top: calc(var(--d) * .15);              /* le haut incliné dépasse un peu : on lui laisse la place */
+  perspective: 1200px; perspective-origin: 50% 10%;
+  flex: none;
 }
+.stage::after {                               /* ombre portée sur l'étagère */
+  content: ""; position: absolute; left: 4%; right: 4%; bottom: -10px; height: 22px; z-index: -1;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0,0,0,.75), transparent 75%);
+}
+.box {
+  position: absolute; left: 0; bottom: var(--T); width: 100%; aspect-ratio: 1 / .78;
+  transform-style: preserve-3d; transform-origin: 50% 100%; transform: rotateX(32deg);
+}
+.lid, .front, .side { position: absolute; backface-visibility: hidden; }
+.lid {                                        /* le dessus en noyer */
+  inset: 0; padding: 4.5%;
+  background:
+    linear-gradient(180deg, rgba(255,225,190,.12), transparent 30%),
+    var(--grain-h), linear-gradient(90deg, #4a2c18, #5a371f 50%, #4a2c18);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,220,180,.25);
+}
+.front {                                      /* la face avant, accrochée à l'arête du bas */
+  left: 0; top: 100%; width: 100%; height: var(--T);
+  transform-origin: 50% 0; transform: rotateX(-90deg);
+  display: flex; align-items: center; gap: 4%; padding: 0 5%;
+  background:
+    linear-gradient(180deg, rgba(255,220,180,.22), rgba(0,0,0,.1) 30%, rgba(0,0,0,.45)),
+    var(--grain-h), #3e2414;
+}
+.side {                                       /* les côtés, pour qu'il n'y ait aucun trou */
+  top: 0; height: 100%; width: var(--T);
+  background: linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.3)), var(--grain-v), #3a2213;
+}
+.side.left { left: 0; transform-origin: 0 50%; transform: rotateY(90deg); }
+.side.right { right: 0; transform-origin: 100% 50%; transform: rotateY(-90deg); }
+
 .plate {
   position: relative; width: 100%; height: 100%; border-radius: 3px;
   background:
@@ -264,7 +314,7 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
 }
 .platter {
-  position: absolute; left: 4%; top: 4%; width: 72%; aspect-ratio: 1; border-radius: 50%;
+  position: absolute; left: 4%; top: 5%; width: 67%; aspect-ratio: 1; border-radius: 50%;
   background: radial-gradient(circle, #8d8a84 0 64%, #d8d5cf 65%, #9a978f 68%, #6e6b65 70%);
   box-shadow: 0 6px 10px rgba(0,0,0,.45);
 }
@@ -311,18 +361,33 @@ h1 {
 .arm-weight { fill: #3a3a3a; }
 .arm-tube { fill: none; stroke: #e7e4de; stroke-width: 11; stroke-linecap: round; }
 .arm-head { fill: #2b2b2b; }
-.deck-front {
-  position: relative; display: flex; align-items: center; gap: 10px;
-  height: calc(var(--d) * .1); margin-top: -1px; padding: 0 5%; border-radius: 0 0 6px 6px;
-  background: linear-gradient(180deg, rgba(255,220,180,.14), rgba(0,0,0,.35)), var(--grain-h), #3a2213;
-  box-shadow: 0 18px 24px -6px rgba(0,0,0,.7);
+.badge {                                      /* la marque, en plaque chromée */
+  margin-right: auto; padding: 2px 8px; border-radius: 2px;
+  font-family: var(--font); font-style: italic; font-weight: 800; font-size: calc(var(--d) * .036); letter-spacing: .04em;
+  color: #2a1a0e; background: linear-gradient(180deg, #f1ede4, #b9b4aa 55%, #e2ded5);
+  box-shadow: 0 1px 2px rgba(0,0,0,.6), inset 0 1px 0 #fff;
 }
-.brand { font-family: var(--mono); font-size: 10px; letter-spacing: .25em; color: #c9a777; margin-right: auto; }
-.power { width: 9px; height: 9px; border-radius: 50%; background: #5a1c0c; transition: all .6s; }
+.badge b { font-style: normal; font-weight: 600; font-family: var(--mono); font-size: .8em; letter-spacing: .2em; color: var(--orange); }
+.model { font-family: var(--mono); font-size: calc(var(--d) * .026); color: #c9a777; letter-spacing: .15em; }
+.engrave {                                    /* gravé sur la plaque alu */
+  position: absolute; right: 4%; bottom: 5%; width: 36%; z-index: 1; text-align: right; line-height: 1.5;
+  font-family: var(--mono); font-size: calc(var(--d) * .021); letter-spacing: .14em; text-transform: uppercase;
+  color: rgba(60,55,48,.75); text-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+.rest {                                       /* le support du bras */
+  position: absolute; left: 80.5%; top: 66%; width: 3%; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f2f0ea, #8f8b83); box-shadow: 0 2px 2px rgba(0,0,0,.4);
+}
+.pitch {                                      /* curseur de vitesse */
+  position: absolute; right: 4.5%; bottom: 26%; width: 4%; height: 26%; border-radius: 3px;
+  background: linear-gradient(180deg, #8a867e, #b8b3aa); box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+}
+.pitch i { position: absolute; left: -30%; right: -30%; top: 45%; height: 12%; border-radius: 2px; background: #2b2b2b; box-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.power { width: calc(var(--d) * .024); aspect-ratio: 1; flex: none; border-radius: 50%; background: #5a1c0c; transition: all .6s; }
 .power.on { background: #ff7a2e; box-shadow: 0 0 10px 2px rgba(255,122,46,.8); }
-.speed { font-family: var(--mono); font-size: 10px; color: #c9a777; }
+.speed { font-family: var(--mono); font-size: calc(var(--d) * .028); color: #c9a777; }
 .knob {
-  width: calc(var(--d) * .06); aspect-ratio: 1; border-radius: 50%;
+  width: calc(var(--d) * .065); aspect-ratio: 1; border-radius: 50%; flex: none;
   background: repeating-conic-gradient(#bdb9b0 0 6deg, #8f8b83 6deg 12deg);
   box-shadow: 0 2px 3px rgba(0,0,0,.5), inset 0 0 0 3px #d3cfc6;
 }
@@ -340,10 +405,10 @@ h1 {
 .kicker.live::before { content: "● "; animation: blink 1.4s steps(2, start) infinite; }
 @keyframes blink { to { visibility: hidden; } }
 .card h2 {
-  margin: 0; font-size: clamp(20px, 1.9vw, 26px); line-height: 1.15; letter-spacing: -.01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 0; font-size: clamp(18px, 1.7vw, 24px); line-height: 1.15; letter-spacing: -.01em;
+  overflow-wrap: anywhere;                     /* le texte passe à la ligne, jamais de « … » */
 }
-.meta { margin: 4px 0 0; color: var(--cream-dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { margin: 4px 0 0; color: var(--cream-dim); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .facts, .tags { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .facts:empty, .tags:empty { display: none; }
 .facts li {
@@ -429,6 +494,57 @@ h1 {
   .clock { min-height: 18px; }
 }
 
+/* ---------- Ranger la bibliothèque ---------- */
+.sort-wrap { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.sort-label { font-size: 13px; font-style: italic; color: var(--cream-dim); }
+.sort {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px; border-radius: 999px; background: rgba(0,0,0,.35); border: 1px solid rgba(239,226,196,.12);
+}
+.sort button {
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 6px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--cream);
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.sort button:hover { background: rgba(239,226,196,.1); }
+.sort button[aria-pressed="true"] { background: var(--mustard); color: #1c120b; }
+.closed .sort-wrap { opacity: .35; pointer-events: none; }
+
+/* ---------- Studio fermé : portes en noyer sur chaque casier ---------- */
+.doors { position: absolute; inset: 0; z-index: 8; display: flex; gap: 3px; background: #120a05; }
+.door {
+  position: relative; flex: 1;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.35), transparent 12%, transparent 88%, rgba(0,0,0,.35)),
+    var(--grain-v), linear-gradient(180deg, #5a361d, #45291a);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,180,.18);
+}
+.door::before {     /* panneau en relief */
+  content: ""; position: absolute; inset: 14% 16%; border-radius: 3px;
+  box-shadow: inset 2px 2px 3px rgba(0,0,0,.55), inset -2px -2px 2px rgba(255,220,180,.14), 0 0 0 1px rgba(0,0,0,.25);
+}
+.door::after {      /* bouton en laiton */
+  content: ""; position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fbe3a0, #c49a3c 55%, #7a5a1c);
+  box-shadow: 0 2px 3px rgba(0,0,0,.6);
+}
+.door.left::after { right: 9%; }
+.door.right::after { left: 9%; }
+.sign {             /* petite pancarte accrochée */
+  position: absolute; left: 50%; top: 22%; translate: -50% 0; rotate: -4deg; z-index: 2;
+  padding: 6px 14px; border-radius: 3px;
+  font-family: var(--font); font-weight: 800; font-style: italic; font-size: 18px; color: #fff3df;
+  background: #c2361d; box-shadow: 0 6px 10px rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.25);
+}
+.sign::before {     /* la ficelle */
+  content: ""; position: absolute; left: 50%; top: -18px; width: 40px; height: 18px; translate: -50% 0;
+  border: 1px solid rgba(239,226,196,.5); border-bottom: 0; border-radius: 20px 20px 0 0;
+}
+.closed .plant { display: none; }
+.closed .clock-axis { visibility: hidden; }
+.tiles li.wait { grid-column: 1 / -1; font-style: italic; color: var(--cream-dim); }
+.closed .record { opacity: .55; }
+
 /* ---------- Légende ---------- */
 .legend {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; list-style: none;
@@ -437,7 +553,7 @@ h1 {
 .legend li { display: flex; align-items: center; gap: 8px; }
 .lg { display: inline-block; width: 14px; height: 14px; border-radius: 2px; }
 .lg-row { height: 5px; background: #6b4425; }
-.lg-div { width: 12px; height: 14px; background: linear-gradient(var(--orange) 0 5px, #e6d6b0 5px); border-radius: 3px 3px 0 0; }
+.lg-div { width: 12px; height: 14px; background: linear-gradient(#e9dbb8 0 4px, var(--orange) 4px 6px, #e9dbb8 6px); border-radius: 3px 3px 0 0; }
 .lg-tick { width: 18px; height: 2px; background: linear-gradient(90deg, var(--mustard), var(--orange)); }
 .lg-love { display: grid; place-items: center; background: #f0cd5a; color: #b4321e; font-size: 11px; rotate: 6deg; }
 .foot { padding: 2px clamp(16px, 4vw, 48px) 10px; font-family: var(--mono); font-size: 12px; color: rgba(239,226,196,.65); }
@@ -445,6 +561,9 @@ h1 {
 /* ---------- Téléphone : platine en haut, casiers en dessous ---------- */
 @media (max-width: 900px) {
   :root { --frame: 12px; }
+  .top { flex-wrap: wrap; height: auto; padding-top: 12px; padding-bottom: 12px; }
+  .sort-wrap { margin-left: 0; width: 100%; }
+  .sort { flex: 1; justify-content: space-between; }
   body { display: block; height: auto; overflow: auto; }
   .niche { container-type: normal; --d: min(84vw, 420px); }
   .wing { --sleeve: min(124px, 34vw); }

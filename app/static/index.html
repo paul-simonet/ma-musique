@@ -15,6 +15,15 @@
     <h1>Live Studio</h1>
     <span class="onair" id="onair">On Air</span>
     <button class="back" id="back" type="button" hidden>↩ Revenir au direct</button>
+    <div class="sort-wrap">
+      <span class="sort-label" id="sort-label">Ranger par</span>
+      <nav class="sort" aria-labelledby="sort-label">
+        <button type="button" data-sort="time">Heure</button>
+        <button type="button" data-sort="genre">Genre</button>
+        <button type="button" data-sort="alpha">A–Z</button>
+        <button type="button" data-sort="plays">Écoutes</button>
+      </nav>
+    </div>
   </header>
 
   <p class="banner" id="banner" hidden></p>
@@ -22,30 +31,39 @@
   <main class="bookcase" id="bookcase">
     <section class="niche" aria-label="La platine">
       <div class="stage">
-        <div class="deck" id="deck">
-          <div class="plate">
-            <div class="platter">
-              <div class="record" id="record">
-                <div class="grooves" aria-hidden="true"></div>
-                <div class="hole" aria-hidden="true"></div>
-                <span class="record-text" id="record-text"></span>
+        <!-- la platine est une vraie boîte en 3D : dessus, face avant et côtés partagent les mêmes arêtes -->
+        <div class="box">
+          <div class="lid" id="deck">
+            <div class="plate">
+              <span class="engrave">Last Stereo<br>ST-70 · Direct Drive</span>
+              <div class="platter">
+                <div class="record" id="record">
+                  <div class="grooves" aria-hidden="true"></div>
+                  <div class="hole" aria-hidden="true"></div>
+                  <span class="record-text" id="record-text"></span>
+                </div>
+                <div class="sheen" aria-hidden="true"></div>
               </div>
-              <div class="sheen" aria-hidden="true"></div>
+              <span class="rest" aria-hidden="true"></span>
+              <svg class="tonearm" id="tonearm" viewBox="0 0 120 660" aria-hidden="true">
+                <rect x="44" y="0" width="32" height="44" rx="6" class="arm-weight"/>
+                <circle cx="60" cy="60" r="34" class="arm-base"/>
+                <circle cx="60" cy="60" r="14" class="arm-cap"/>
+                <path d="M60 60 L60 500 Q60 530 50 560" class="arm-tube"/>
+                <path d="M38 550 L66 556 L60 612 L34 606 Z" class="arm-head"/>
+              </svg>
+              <span class="pitch" aria-hidden="true"><i></i></span>
             </div>
-            <svg class="tonearm" id="tonearm" viewBox="0 0 120 660" aria-hidden="true">
-              <rect x="44" y="0" width="32" height="44" rx="6" class="arm-weight"/>
-              <circle cx="60" cy="60" r="34" class="arm-base"/>
-              <circle cx="60" cy="60" r="14" class="arm-cap"/>
-              <path d="M60 60 L60 500 Q60 530 50 560" class="arm-tube"/>
-              <path d="M38 550 L66 556 L60 612 L34 606 Z" class="arm-head"/>
-            </svg>
           </div>
-        </div>
-        <div class="deck-front" aria-hidden="true">
-          <span class="brand">PAULSIM · 7</span>
-          <span class="power" id="power"></span>
-          <span class="speed">33⅓</span>
-          <span class="knob"></span><span class="knob"></span>
+          <div class="front" aria-hidden="true">
+            <span class="badge">LAST <b>STEREO</b></span>
+            <span class="model">ST-70</span>
+            <span class="power" id="power"></span>
+            <span class="speed">33⅓</span>
+            <span class="knob"></span><span class="knob"></span>
+          </div>
+          <div class="side left" aria-hidden="true"></div>
+          <div class="side right" aria-hidden="true"></div>
         </div>
       </div>
 
@@ -65,15 +83,6 @@
     </section>
     <!-- les 4 étages sont ajoutés ici par app.js -->
   </main>
-
-  <ul class="legend">
-    <li><b class="lg lg-tick"></b>Se lit comme un livre, dans l'ordre de la journée</li>
-    <li><b class="lg lg-div"></b>Intercalaire = l'heure</li>
-    <li><b class="lg lg-love">♥</b>Post-it = morceau aimé sur Last.fm</li>
-    <li>Clique un disque pour le poser sur la platine</li>
-  </ul>
-
-  <footer class="foot"><span id="summary">…</span> · données Last.fm via mon serveur · ← → pour feuilleter, Échap pour le direct</footer>
 
   <script src="app.js"></script>
 </body>

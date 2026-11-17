@@ -27,7 +27,8 @@ TZ = ZoneInfo(os.environ.get("TIMEZONE", "Europe/Paris"))
 # Modifiable pour simuler une panne (voir le README) : LASTFM_URL=http://127.0.0.1:9/
 LASTFM_URL = os.environ.get("LASTFM_URL", "https://ws.audioscrobbler.com/2.0/")
 COVER_URL = "https://lastfm.freetls.fastly.net/i/u/300x300/{}"
-MAX_PAGES = 5            # 5 pages de 200 = 1000 écoutes max sur la semaine
+DEEZER = "https://api.deezer.com/search/{}"       # pochettes et durées manquantes (API publique, sans clé)
+MAX_PAGES = 1            # 1 page de 200 écoutes : un rafraîchissement = un seul appel à Last.fm
 RETRY_AFTER_FAIL = 15    # après un échec, on attend avant de réessayer
 PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"  # l'étoile grise de Last.fm
 COVER_RE = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|gif|webp)$")
@@ -57,6 +58,8 @@ def call_lastfm(params):
         data = reply.json()
     except (requests.RequestException, ValueError) as exc:
         raise LastfmError("Last.fm ne répond pas") from exc
+    if not isinstance(data, dict):
+        raise LastfmError("Réponse inattendue de Last.fm")
     if "error" in data:
         raise LastfmError(data.get("message", "Erreur Last.fm"))
     return data
@@ -75,7 +78,9 @@ def fetch_week_tracks():
             "extended": 1,
             "page": page,
         })
-        block = data["recenttracks"]
+        block = data.get("recenttracks")
+        if not isinstance(block, dict):          # Last.fm a répondu, mais pas ce qu'on attend
+            raise LastfmError("Réponse inattendue de Last.fm")
         items = block.get("track", [])
         if isinstance(items, dict):   # Last.fm renvoie un objet seul s'il n'y a qu'une écoute
             items = [items]
@@ -238,28 +243,25 @@ def music():
 
 
 # --------------------------------------------------------------------------
-# Infos en plus sur un morceau ou un album (genres, durée, nombre d'écoutes…)
-# Ces réponses changent peu : on les garde 1 h, pour tous les visiteurs.
+# Infos en plus (durée d'un morceau, nombre de titres d'un album).
+# Elles viennent de l'API publique de Deezer, pas de Last.fm : ainsi, recharger la page
+# ne fait jamais plus d'un appel à Last.fm. On les garde 1 h, pour tous les visiteurs.
 # --------------------------------------------------------------------------
 
 INFO_SECONDS = 3600
 infos = OrderedDict()
 infos_lock = threading.Lock()
-TAG_SKIP = {"seen live", "favorites", "favourite", "french"}
 
 
-def clean_summary(text):
-    text = re.sub(r"<a [^>]*>.*?</a>", "", text or "")   # Last.fm ajoute « Read more on Last.fm »
-    text = re.sub(r"<[^>]+>", "", text).strip()
-    return text[:320] + ("…" if len(text) > 320 else "")
-
-
-def tags_of(block):
-    items = (block or {}).get("tag", [])
-    if isinstance(items, dict):
-        items = [items]
-    names = [t.get("name", "") for t in items]
-    return [n for n in names if n and n.lower() not in TAG_SKIP][:4]
+def deezer_search(kind, artist, title):
+    query = f'artist:"{artist}" {kind}:"{title}"'
+    data = requests.get(DEEZER.format(kind), params={"q": query, "limit": 5}, timeout=6).json().get("data", [])
+    wanted = artist.lower()
+    for r in data:
+        name = (r.get("artist") or {}).get("name", "").lower()
+        if wanted in name or name in wanted:
+            return r
+    return None
 
 
 def cached_info(key, fetch):
@@ -269,8 +271,8 @@ def cached_info(key, fetch):
             return hit[1]
     stamp = time.time()
     try:
-        value = fetch()
-    except (LastfmError, KeyError, TypeError, ValueError):
+        value = fetch() or {}
+    except (requests.RequestException, ValueError, KeyError, TypeError):
         value = {}                                  # pas d'infos en plus : la page s'en passe…
         stamp = time.time() - INFO_SECONDS + 120    # …et on ne réessaie pas avant 2 minutes
     with infos_lock:
@@ -281,39 +283,37 @@ def cached_info(key, fetch):
 
 
 def fetch_track_info(artist, track):
-    t = call_lastfm({"method": "track.getInfo", "artist": artist, "track": track,
-                     "username": USER, "autocorrect": 1})["track"]
-    duration = int(t.get("duration") or 0) // 1000
-    return {
-        "duration": duration or None,
-        "listeners": int(t.get("listeners") or 0),
-        "user_plays": int(t.get("userplaycount") or 0),
-        "tags": tags_of(t.get("toptags")),
-        "summary": clean_summary((t.get("wiki") or {}).get("summary")),
-    }
+    r = deezer_search("track", artist, track)
+    return {"duration": r.get("duration")} if r else {}
+
+
+genre_names = {}   # identifiant de genre Deezer -> nom (« Rap/Hip Hop »…), il y en a peu
+
+
+def genre_name(genre_id):
+    if not genre_id or genre_id < 0:
+        return None
+    if genre_id not in genre_names:
+        data = requests.get(f"https://api.deezer.com/genre/{int(genre_id)}", timeout=6).json()
+        genre_names[genre_id] = data.get("name") or None
+    return genre_names[genre_id]
 
 
 def fetch_album_info(artist, album):
-    a = call_lastfm({"method": "album.getInfo", "artist": artist, "album": album,
-                     "username": USER, "autocorrect": 1})["album"]
-    tracks = (a.get("tracks") or {}).get("track", [])
-    if isinstance(tracks, dict):
-        tracks = [tracks]
-    wiki = a.get("wiki") or {}
-    return {
-        "listeners": int(a.get("listeners") or 0),
-        "user_plays": int(a.get("userplaycount") or 0),
-        "track_count": len(tracks) or None,
-        "released": (wiki.get("published") or "")[:11].strip() or None,
-        "tags": tags_of(a.get("tags")),
-        "summary": clean_summary(wiki.get("summary")),
-    }
+    r = deezer_search("album", artist, album)
+    if not r:                                   # un single : on cherche le morceau, puis son album
+        t = deezer_search("track", artist, album)
+        if t and (t.get("album") or {}).get("id"):
+            r = requests.get(f"https://api.deezer.com/album/{int(t['album']['id'])}", timeout=6).json()
+    if not r:
+        return {}
+    return {"track_count": r.get("nb_tracks"), "genre": genre_name(r.get("genre_id"))}
 
 
 @app.get("/api/track")
 def track_info():
     artist, track = request.args.get("artist", "")[:200], request.args.get("track", "")[:200]
-    if not API_KEY or not artist or not track:
+    if not artist or not track:
         return jsonify({})
     return jsonify(cached_info(("track", artist.lower(), track.lower()), lambda: fetch_track_info(artist, track)))
 
@@ -321,7 +321,7 @@ def track_info():
 @app.get("/api/album")
 def album_info():
     artist, album = request.args.get("artist", "")[:200], request.args.get("album", "")[:200]
-    if not API_KEY or not artist or not album:
+    if not artist or not album:
         return jsonify({})
     return jsonify(cached_info(("album", artist.lower(), album.lower()), lambda: fetch_album_info(artist, album)))
 
@@ -357,7 +357,6 @@ def cover(name):
 # et les sert lui-même. Le navigateur ne parle toujours qu'à notre serveur.
 # --------------------------------------------------------------------------
 
-DEEZER = "https://api.deezer.com/search/{}"
 art_cache = OrderedDict()   # (artiste, album) -> (image, type) ou None si introuvable
 art_lock = threading.Lock()
 
