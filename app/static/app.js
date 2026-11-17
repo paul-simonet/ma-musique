@@ -32,6 +32,37 @@ function render() {
   $("summary").textContent = `${d.user} · ${d.total_plays} écoute${d.total_plays > 1 ? "s" : ""} sur 7 jours`;
   renderShelves(d);
   renderDeck();
+  renderStats(d);
+}
+
+function renderStats(d) {
+  // tout est calculé à partir des données déjà reçues : aucun appel en plus
+  const perHour = Array(24).fill(0);
+  for (const shelf of d.shelves) for (const a of shelf.albums) {
+    for (const t of a.tracks) {
+      perHour[parseInt(t.time.split(" ")[1], 10)]++;
+    }
+  }
+  const peak = perHour.indexOf(Math.max(...perHour));
+  const albums = d.shelves.reduce((n, s) => n + s.albums.length, 0);
+  const max = Math.max(1, ...perHour);
+
+  $("clock").replaceChildren(...perHour.map((n, h) => {
+    const bar = el("span", h === d.hour ? "bar now" : "bar");
+    bar.style.setProperty("--h", n / max);
+    bar.title = `${h}h : ${n} écoute${n > 1 ? "s" : ""}`;
+    return bar;
+  }));
+  const tiles = [
+    [d.total_plays, "écoutes"],
+    [albums, "albums"],
+    [d.total_plays ? `${peak}h` : "—", "heure de pointe"],
+  ];
+  $("tiles").replaceChildren(...tiles.map(([big, small]) => {
+    const li = el("li");
+    li.append(el("strong", "", String(big)), el("span", "", small));
+    return li;
+  }));
 }
 
 // La bibliothèque se lit comme un livre : casier de gauche puis de droite, étage par étage.
@@ -103,12 +134,17 @@ function makeSlot(album, shelf) {
   const slot = el("button", "slot");
   slot.type = "button";
   slot.style.setProperty("--color", colorFor(album.key));
-  if (album.cover) slot.style.setProperty("--img", `url("${album.cover}")`);
   slot.setAttribute("aria-label", `${album.album}, ${album.artist}, ${album.plays} écoute(s), ${shelf.label.toLowerCase()}`);
 
   const sleeve = el("span", "sleeve");
-  const front = el("span", "front");
-  if (!album.cover) front.append(el("span", "name", album.album));                       // pochette maison
+  const front = el("span", "front generic");                                              // pochette carton en attendant
+  const label = el("span", "name", album.album);
+  front.append(label);
+  withCover(album.cover, album.artist, album.album, (url) => {                           // la vraie pochette, si on la trouve
+    slot.style.setProperty("--img", `url("${url}")`);
+    front.classList.remove("generic");
+    label.remove();
+  });
   if (album.loved) front.append(el("span", "postit", "♥"));                              // coup de cœur
   sleeve.append(el("span", "side"), front);
   slot.append(sleeve);
@@ -127,20 +163,20 @@ function renderDeck() {
   const live = !pick;
   const playing = live && d.now_playing;
 
-  let cover, name, kicker, title, meta, tracks = [];
+  let cover, name, kicker, title, meta;
   if (pick) {
     const { album, shelf } = pick;
-    cover = album.cover; name = album.album;
-    kicker = `${shelf.label} · ${album.plays} écoute${album.plays > 1 ? "s" : ""}`;
-    title = album.album; meta = album.artist; tracks = album.tracks;
+    cover = coverUrl(album.cover, album.artist, album.album); name = album.album;
+    kicker = `Sorti de l'étagère · ${hhmm(album.minute)}`;
+    title = album.album; meta = `${album.artist} · ${album.plays} écoute${album.plays > 1 ? "s" : ""} cette semaine`;
   } else if (playing) {
     const t = d.now_playing;
-    cover = t.cover; name = t.album || t.name;
+    cover = coverUrl(t.cover, mainArtist(t.artist), t.album || t.name); name = t.album || t.name;
     kicker = "En train d'écouter"; title = t.name;
     meta = [t.artist, t.album].filter(Boolean).join(" · ") + (t.loved ? "  ♥" : "");
   } else if (d.last_played) {
     const t = d.last_played;
-    cover = t.cover; name = t.album || t.name;
+    cover = coverUrl(t.cover, mainArtist(t.artist), t.album || t.name); name = t.album || t.name;
     kicker = `Dernière écoute ${ago(t.ts)}`; title = t.name;
     meta = [t.artist, t.album].filter(Boolean).join(" · ");
   } else {
@@ -162,29 +198,47 @@ function renderDeck() {
   $("kicker").classList.toggle("live", Boolean(playing));
   $("title").textContent = title;
   $("meta").textContent = meta;
-  $("tracks").replaceChildren(...tracks.slice().reverse().map((t) => {
-    const li = el("li");
-    li.append(el("time", "", t.time), el("span", "", t.name));
-    if (t.loved) li.append(el("span", "heart", "♥"));
-    return li;
-  }));
   $("back").hidden = live;
   for (const s of state.sleeves) s.el.classList.toggle("selected", s.album.id === state.selected);
 }
 
 function putOnDeck(cover, name) {
-  // le disque entier prend la pochette ; sans pochette, une couleur unie avec le nom de l'album
+  // le disque entier prend la pochette ; sans pochette, un vrai vinyle noir avec une étiquette au nom de l'album
   const record = $("record");
-  const key = cover || `color:${name}`;
+  const key = cover || `none:${name}`;
   if (record.dataset.key === key) return;
+  record.dataset.key = key;
   record.classList.add("swap");
-  setTimeout(() => {
-    record.style.setProperty("--disc-img", cover ? `url("${cover}")` : "none");
+  const apply = (url) => setTimeout(() => {
+    if (record.dataset.key !== key) return;
+    record.style.setProperty("--disc-img", url ? `url("${url}")` : "none");
     record.style.setProperty("--disc-color", colorFor(name || ""));
-    $("record-text").textContent = cover ? "" : name;
-    record.dataset.key = key;
+    record.classList.toggle("plain", !url);
+    $("record-text").textContent = url ? "" : name;
     record.classList.remove("swap");
   }, 250);
+  if (!cover) return apply(null);
+  const img = new Image();
+  img.onload = () => apply(cover);
+  img.onerror = () => apply(null);
+  img.src = cover;
+}
+
+// adresse de la pochette : celle de Last.fm si elle existe, sinon notre serveur la cherche sur Deezer
+function coverUrl(cover, artist, album) {
+  if (cover) return cover;
+  if (!artist || !album) return null;
+  return `/art?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`;
+}
+const coverOk = new Map();   // adresse -> true / false, pour ne pas redemander une pochette introuvable
+function withCover(cover, artist, album, done) {
+  const url = coverUrl(cover, artist, album);
+  if (!url || coverOk.get(url) === false) return;
+  if (coverOk.get(url)) return done(url);
+  const img = new Image();
+  img.onload = () => { coverOk.set(url, true); done(url); };
+  img.onerror = () => coverOk.set(url, false);
+  img.src = url;
 }
 
 // ---------------------------------------------------------------- infos en plus (via notre serveur)
@@ -205,21 +259,12 @@ async function showInfo(req) {
 }
 
 function paintInfo(info, kind) {
+  // deux infos au plus, pour que la fiche reste lisible d'un coup d'œil
   const facts = [];
-  const fmt = new Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 });
-  if (info.duration) facts.push(["", `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}`]);
-  if (info.track_count) facts.push([info.track_count, " titres"]);
-  if (info.released) facts.push(["", `sorti le ${info.released}`]);
-  if (info.user_plays) facts.push([info.user_plays, kind === "album" ? " écoutes au total" : ` écoute${info.user_plays > 1 ? "s" : ""} par toi`]);
-  if (info.listeners) facts.push([fmt.format(info.listeners), " auditeurs sur Last.fm"]);
-  $("facts").replaceChildren(...facts.map(([strong, text]) => {
-    const li = el("li");
-    if (strong !== "") li.append(el("b", "", String(strong)));
-    li.append(text);
-    return li;
-  }));
-  $("tags").replaceChildren(...(info.tags || []).map((t) => el("li", "", t)));
-  $("about").textContent = info.summary || "";
+  if (info.duration) facts.push(`${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}`);
+  if (info.track_count) facts.push(`${info.track_count} titres`);
+  if (info.tags && info.tags[0]) facts.push(info.tags[0].toLowerCase());
+  $("facts").replaceChildren(...facts.slice(0, 2).map((f) => el("li", "", f)));
 }
 
 function renderEmpty(message) {

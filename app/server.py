@@ -351,6 +351,67 @@ def cover(name):
     return Response(body, mimetype=mime, headers={"Cache-Control": "public, max-age=604800"})
 
 
+# --------------------------------------------------------------------------
+# Pochettes manquantes : Last.fm n'en a pas pour beaucoup de sorties récentes.
+# Le serveur les cherche alors sur l'API publique de Deezer (sans clé), les garde en mémoire,
+# et les sert lui-même. Le navigateur ne parle toujours qu'à notre serveur.
+# --------------------------------------------------------------------------
+
+DEEZER = "https://api.deezer.com/search/{}"
+art_cache = OrderedDict()   # (artiste, album) -> (image, type) ou None si introuvable
+art_lock = threading.Lock()
+
+
+def find_deezer_cover(artist, album):
+    wanted = artist.lower()
+    queries = [("album", f'artist:"{artist}" album:"{album}"', lambda r: r),
+               ("track", f'artist:"{artist}" track:"{album}"', lambda r: r.get("album", {})),
+               ("album", f"{artist} {album}", lambda r: r)]
+    for kind, query, pick in queries:
+        try:
+            results = requests.get(DEEZER.format(kind), params={"q": query, "limit": 5}, timeout=6).json().get("data", [])
+        except (requests.RequestException, ValueError):
+            return None
+        for r in results:
+            name = (r.get("artist") or {}).get("name", "").lower()
+            if wanted in name or name in wanted:
+                url = pick(r).get("cover_big") or ""
+                if url.startswith("https://") and ".dzcdn.net/" in url:
+                    return url
+    return None
+
+
+@app.get("/art")
+def art():
+    artist = request.args.get("artist", "").strip()[:200]
+    album = request.args.get("album", "").strip()[:200]
+    if not artist or not album:
+        abort(404)
+    key = (artist.lower(), album.lower())
+    with art_lock:
+        known = key in art_cache
+        hit = art_cache.get(key)
+    if not known:
+        hit = None
+        url = find_deezer_cover(artist, album)
+        if url:
+            try:
+                reply = requests.get(url, timeout=8)
+                reply.raise_for_status()
+                hit = (reply.content, reply.headers.get("Content-Type", "image/jpeg"))
+            except requests.RequestException:
+                hit = None
+        log.info("Pochette Deezer pour %s – %s : %s", artist, album, "trouvée" if hit else "introuvable")
+        with art_lock:
+            art_cache[key] = hit
+            while len(art_cache) > 300:
+                art_cache.popitem(last=False)
+    if not hit:
+        abort(404)
+    body, mime = hit
+    return Response(body, mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/health")
 def health():
     return {"ok": True}

@@ -10,11 +10,8 @@
   --led: 255, 190, 110;                 /* lumière chaude des étagères */
   --font: "Fraunces", Georgia, "Times New Roman", serif;
   --mono: "DM Mono", ui-monospace, Consolas, monospace;
-  --chrome: 168px;                      /* enseigne + légende + marges */
   --frame: 18px;                        /* épaisseur des montants */
-  --row: max(170px, calc((100dvh - var(--chrome) - 4 * var(--frame)) / 3));   /* 3 étages = 1 écran */
-  --d: min(380px, 28vw, calc(var(--row) * 1.45));                            /* largeur de la platine */
-  --sleeve: calc(var(--row) * .6);      /* taille d'une pochette */
+  --center: clamp(280px, 27vw, 440px);  /* largeur de la colonne de la platine */
 
   /* grain horizontal (planches) et vertical (montants, fonds) */
   --grain-h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.16' numOctaves='4' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.10 0 0 0 0 0.05 0 0 0 0 0.02 1.0 0 0 0 -0.32'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"),
@@ -24,7 +21,10 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
+html, body { margin: 0; height: 100%; }
+/* une seule page, sans défilement : l'enseigne et la légende prennent leur place, la bibliothèque prend le reste */
+body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+.top, .banner, .legend, .foot { flex: none; }
 body {
   font-family: var(--font); color: var(--cream);
   background:
@@ -34,7 +34,7 @@ body {
 }
 
 /* ---------- Enseigne ---------- */
-.top { display: flex; align-items: center; gap: 16px; height: 76px; padding: 0 clamp(16px, 4vw, 48px); }
+.top { display: flex; align-items: center; gap: 14px; height: clamp(56px, 9dvh, 76px); padding: 0 clamp(16px, 4vw, 48px); }
 .stripes { display: flex; flex-direction: column; gap: 4px; width: 56px; }
 .stripes i { height: 6px; border-radius: 3px; }
 .stripes i:nth-child(1) { background: var(--mustard); }
@@ -62,8 +62,9 @@ h1 {
 /* ---------- La bibliothèque ---------- */
 .bookcase {
   display: grid;
-  grid-template-columns: 1fr calc(var(--d) + 56px) 1fr;
-  grid-template-rows: repeat(3, var(--row));
+  grid-template-columns: 1fr var(--center) 1fr;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  flex: 1; min-height: 0;
   gap: var(--frame);
   margin: 0 clamp(12px, 3vw, 40px);
   padding: var(--frame);
@@ -79,7 +80,9 @@ h1 {
 
 /* un casier : fond, ombres internes, ruban LED, planche */
 .wing {
-  position: relative; grid-row: var(--r); min-width: 0;
+  position: relative; grid-row: var(--r); min-width: 0; min-height: 0;
+  container-type: size;
+  --sleeve: min(62cqh, 46cqw);           /* taille d'une pochette = selon la hauteur du casier */
   border-radius: 2px; overflow: hidden;
   background:
     linear-gradient(rgba(18,10,5,.5), rgba(18,10,5,.5)),       /* fond du casier : plus sombre et plus doux */
@@ -226,8 +229,10 @@ h1 {
 /* ---------- La niche centrale et la platine ---------- */
 .niche {
   position: relative; grid-column: 2; grid-row: 1 / -1;
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-  padding: 22px 20px 16px; min-height: 0; overflow: hidden; border-radius: 2px;
+  container-type: size;
+  --d: min(380px, calc(100cqw - 36px), 58cqh);   /* la platine prend au plus ~45 % de la hauteur */
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 20px 18px 14px; min-height: 0; overflow: hidden; border-radius: 2px;
   background: linear-gradient(rgba(18,10,5,.5), rgba(18,10,5,.5)), var(--grain-v), linear-gradient(180deg, #24150b, #190e07);
   box-shadow:
     inset 0 22px 26px -10px rgba(0,0,0,.85),
@@ -324,9 +329,9 @@ h1 {
 
 /* ---------- La fiche sous la platine ---------- */
 .card {
-  position: relative; z-index: 2; width: 100%; flex: 1; min-height: 0; overflow: auto;
+  position: relative; z-index: 2; width: 100%; flex: none; overflow: hidden;
   background: linear-gradient(180deg, rgba(42,26,15,.92), rgba(28,17,10,.92));
-  border: 1px solid rgba(239,226,196,.1); border-radius: 12px; padding: 18px 20px;
+  border: 1px solid rgba(239,226,196,.1); border-radius: 12px; padding: 16px 18px;
   box-shadow: 0 1px 0 rgba(255,230,190,.06) inset, 0 12px 24px rgba(0,0,0,.4);
   scrollbar-width: thin; scrollbar-color: rgba(239,226,196,.2) transparent;
 }
@@ -334,8 +339,11 @@ h1 {
 .kicker.live { color: var(--orange); }
 .kicker.live::before { content: "● "; animation: blink 1.4s steps(2, start) infinite; }
 @keyframes blink { to { visibility: hidden; } }
-.card h2 { margin: 0; font-size: clamp(20px, 1.9vw, 26px); line-height: 1.15; letter-spacing: -.01em; }
-.meta { margin: 4px 0 0; color: var(--cream-dim); font-size: 15px; }
+.card h2 {
+  margin: 0; font-size: clamp(20px, 1.9vw, 26px); line-height: 1.15; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.meta { margin: 4px 0 0; color: var(--cream-dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .facts, .tags { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .facts:empty, .tags:empty { display: none; }
 .facts li {
@@ -358,16 +366,73 @@ h1 {
 .tracks time { font-family: var(--mono); color: var(--mustard); font-size: 11px; padding-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tracks .heart { color: #e05a3a; margin-left: auto; }
 .back {
-  margin-top: 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   background: var(--orange); color: #1c120b; border: 0; border-radius: 999px; padding: 8px 14px;
   transition: background-color .15s ease-out;
 }
 .back:hover { background: var(--mustard); }
 
+/* ---------- Pochette carton « découpée » (quand aucune pochette n'existe) ---------- */
+.sleeve .front.generic {
+  background:
+    radial-gradient(circle, var(--color) 0 15%, #0e0e0e 15.6% 17%, #1b1b1b 17.5%, #101010 34%, rgba(0,0,0,.6) 35%, transparent 36.5%),
+    radial-gradient(rgba(90,60,30,.25) .8px, transparent 1.2px) 0 0 / 6px 6px,
+    linear-gradient(160deg, #d2ae78, #b98f57);
+}
+.sleeve .front.generic .name {
+  max-width: 28%; padding: 0; font-size: calc(var(--sleeve) * .055); line-height: 1.05;
+  color: #fff7e6; text-shadow: none; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.record.plain {   /* vinyle noir classique, étiquette colorée au centre */
+  background:
+    radial-gradient(circle, var(--disc-color) 0 30%, #0c0c0c 30.5% 32%, transparent 32.5%),
+    repeating-radial-gradient(circle, #111 0 1px, #1e1e1e 1px 2px, #141414 2px 3px);
+}
+.record.plain .record-text { max-width: 52%; padding: 0; font-size: calc(var(--d) * .04); }
+
+/* ---------- Statistiques sous la platine ---------- */
+.stats {
+  position: relative; z-index: 2; width: 100%; flex: 1; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  padding: 14px 18px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(42,26,15,.92), rgba(28,17,10,.92));
+  border: 1px solid rgba(239,226,196,.1);
+}
+.stats-title { margin: 0 0 10px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--mustard); }
+.clock { display: flex; align-items: flex-end; gap: 2px; flex: 1 1 0; min-height: 22px; max-height: 120px; }
+.bar {
+  flex: 1; height: max(2px, calc(var(--h) * 100%)); border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, var(--mustard), var(--orange));
+  opacity: .85;
+}
+.bar.now { background: #fff1d6; opacity: 1; box-shadow: 0 0 8px rgba(255,220,170,.6); }
+.clock-axis { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--mono); font-size: 9px; color: var(--cream-dim); }
+.tiles { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 12px; }
+.tiles li { min-width: 0; }
+.tiles li.wide { grid-column: span 3; display: flex; align-items: baseline; gap: 8px; }
+.tiles strong {
+  display: block; font-size: clamp(20px, 2vw, 28px); line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em;
+}
+.tiles li.wide strong { font-size: 16px; max-width: 60%; }
+.tiles span { font-size: 12px; color: var(--cream-dim); white-space: nowrap; }
+
+@container (max-height: 640px) {          /* écran bas : on garde l'essentiel des stats */
+  .stats-title, .clock-axis { display: none; }
+  .stats { padding: 10px 14px; }
+  .card { padding: 12px 14px; }
+  .card h2 { font-size: 20px; }
+  .facts { margin-top: 8px; }
+  .tiles { margin-top: 8px; gap: 4px 10px; }
+  .tiles strong { font-size: 19px; }
+  .tiles span { font-size: 11px; }
+  .clock { min-height: 18px; }
+}
+
 /* ---------- Légende ---------- */
 .legend {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; list-style: none;
-  height: 44px; margin: 10px clamp(16px, 4vw, 48px) 0; padding: 0; font-size: 13px; color: var(--cream-dim);
+  margin: 10px clamp(16px, 4vw, 48px) 2px; padding: 0; font-size: 13px; color: var(--cream-dim);
 }
 .legend li { display: flex; align-items: center; gap: 8px; }
 .lg { display: inline-block; width: 14px; height: 14px; border-radius: 2px; }
@@ -375,15 +440,19 @@ h1 {
 .lg-div { width: 12px; height: 14px; background: linear-gradient(var(--orange) 0 5px, #e6d6b0 5px); border-radius: 3px 3px 0 0; }
 .lg-tick { width: 18px; height: 2px; background: linear-gradient(90deg, var(--mustard), var(--orange)); }
 .lg-love { display: grid; place-items: center; background: #f0cd5a; color: #b4321e; font-size: 11px; rotate: 6deg; }
-.foot { padding: 0 clamp(16px, 4vw, 48px) 12px; font-family: var(--mono); font-size: 12px; color: rgba(239,226,196,.65); }
+.foot { padding: 2px clamp(16px, 4vw, 48px) 10px; font-family: var(--mono); font-size: 12px; color: rgba(239,226,196,.65); }
 
 /* ---------- Téléphone : platine en haut, casiers en dessous ---------- */
 @media (max-width: 900px) {
-  :root { --d: min(84vw, 420px); --row: 210px; --frame: 12px; }
+  :root { --frame: 12px; }
+  body { display: block; height: auto; overflow: auto; }
+  .niche { container-type: normal; --d: min(84vw, 420px); }
+  .wing { --sleeve: min(124px, 34vw); }
   .legend { height: auto; }
   .bookcase { grid-template-columns: 1fr; grid-template-rows: auto; }
   .niche { grid-column: 1; grid-row: auto; }
-  .wing, .wing.a, .wing.b { grid-column: 1; grid-row: auto; height: var(--row); }
+  .wing, .wing.a, .wing.b { grid-column: 1; grid-row: auto; height: 200px; }
+  .stats { flex: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
