@@ -9,4 +9,6 @@ services:
     environment:
       CACHE_SECONDS: "45"
       TIMEZONE: Europe/Paris
+    volumes:
+      - ./app/static:/app/static:ro   # la page est lue en direct : pas besoin de rebuild pour la modifier
     restart: unless-stopped

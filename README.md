@@ -1,14 +1,11 @@
-# Ma semaine en vinyles
+# Live Studio
 
-Mes écoutes Last.fm de la semaine, rangées comme dans un salon des années 70.
+Mes écoutes Last.fm des 7 derniers jours, rangées dans une bibliothèque en noyer des années 70.
 
-- **La platine** fait tourner le disque que j'écoute en ce moment, avec sa pochette sur l'étiquette. Quand rien ne joue, le bras se relève et la platine montre ma dernière écoute.
-- **L'étagère** a un rayon par jour des 7 derniers jours. Chaque album y est rangé par la tranche.
-  - **Épaisseur** de la tranche = nombre d'écoutes ce jour-là.
-  - **Poussière** = nombre de jours depuis la dernière écoute de l'album. Un album écouté aujourd'hui brille.
-  - **Post-it ♥** = j'ai « aimé » un morceau de cet album sur Last.fm.
-- **La lumière** de la pièce suit l'heure de ma dernière écoute : bleue la nuit, froide le matin, dorée l'après-midi, orange le soir.
-- On **feuillette** les anciens disques en cliquant sur une tranche (ou avec ← →). Échap revient au direct.
+- **La platine**, au centre, fait tourner le disque que j'écoute en ce moment. La pochette couvre tout le disque. En dessous, une fiche donne la durée, le nombre d'écoutes, les genres et un résumé, tirés de Last.fm. Quand rien ne joue, le bras se relève et la platine montre ma dernière écoute.
+- **La bibliothèque** a 3 étages : la nuit (0 h–8 h), la journée (8 h–16 h) et le soir (16 h–24 h). Sur chaque étage, les disques sont rangés dans l'ordre de la journée, de gauche à droite, et se répartissent sur toute la largeur.
+- **Un post-it ♥** marque les albums dont j'ai « aimé » un morceau sur Last.fm.
+- On **sort un disque** en le survolant. Un clic le pose sur la platine, avec la liste des morceaux écoutés. ← → feuillettent les disques, Échap revient au direct.
 
 ## Lancer l'appli
 

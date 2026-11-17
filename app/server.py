@@ -13,11 +13,11 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, Response, abort, jsonify
+from flask import Flask, Response, abort, jsonify, request
 
 API_KEY = os.environ.get("LASTFM_API_KEY", "").strip()
 USER = os.environ.get("LASTFM_USER", "paulsim7").strip()
@@ -31,7 +31,8 @@ MAX_PAGES = 5            # 5 pages de 200 = 1000 écoutes max sur la semaine
 RETRY_AFTER_FAIL = 15    # après un échec, on attend avant de réessayer
 PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"  # l'étoile grise de Last.fm
 COVER_RE = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|gif|webp)$")
-DAY_NAMES = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+DAY_SHORT = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+BANDS = [("La nuit", 0, 8), ("La journée", 8, 16), ("Le soir", 16, 24)]   # 3 étages de 8 h
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("musique")
@@ -126,48 +127,46 @@ def build_view(raw_tracks):
     for t in tracks:
         t["cover"] = t["cover"] or covers_by_album.get(album_key(t))
 
-    today = datetime.now(TZ).date()
-    days = [today - timedelta(days=i) for i in range(6, -1, -1)]   # du plus ancien à aujourd'hui
-    by_day = {d: OrderedDict() for d in days}
-    last_seen = {}   # album -> dernière écoute de la semaine (pour la poussière)
+    # 3 étages, un par moment de la journée ; sur chaque étage, les disques suivent l'heure
+    shelves = [{"label": label, "from": a, "to": b, "albums": OrderedDict()} for label, a, b in BANDS]
+    last_seen = {}   # album -> dernière écoute (pour la poussière)
 
     for t in played:
         moment = datetime.fromtimestamp(t["ts"], TZ)
-        day = moment.date()
-        if day not in by_day:
-            continue
+        shelf = shelves[moment.hour // 8]
         key = album_key(t)   # un album = son nom + l'artiste principal (« HOUDI, Ziak » = « Houdi »)
-        albums = by_day[day]
+        albums = shelf["albums"]
         if key not in albums:
             albums[key] = {
-                "id": f"{day.isoformat()}|{key}",
+                "id": f"{shelf['from']}|{key}",
                 "key": key,
                 "album": t["album"] or t["name"],
                 "artist": t["artist"].split(",")[0].strip(),
                 "cover": t["cover"],
+                "minute": moment.hour * 60 + moment.minute,   # place sur l'étage : la 1re écoute
                 "plays": 0,
                 "loved": False,
                 "tracks": [],
             }
         entry = albums[key]
+        entry["minute"] = min(entry["minute"], moment.hour * 60 + moment.minute)
         entry["plays"] += 1
         entry["loved"] = entry["loved"] or t["loved"]
         entry["cover"] = entry["cover"] or t["cover"]
-        entry["tracks"].append({"name": t["name"], "time": moment.strftime("%H:%M"), "loved": t["loved"]})
+        entry["tracks"].append({
+            "name": t["name"],
+            "time": f"{DAY_SHORT[moment.weekday()]} {moment.strftime('%H:%M')}",
+            "loved": t["loved"],
+        })
         last_seen[key] = max(last_seen.get(key, 0), t["ts"])
 
     now_ts = time.time()
-    day_list = []
-    for d in days:
-        albums = list(by_day[d].values())
+    shelf_list = []
+    for shelf in shelves:
+        albums = sorted(shelf["albums"].values(), key=lambda a: a["minute"])
         for a in albums:
             a["days_since"] = round((now_ts - last_seen[a["key"]]) / 86400, 2)
-        day_list.append({
-            "date": d.isoformat(),
-            "label": "Aujourd'hui" if d == today else ("Hier" if d == today - timedelta(days=1) else f"{DAY_NAMES[d.weekday()]} {d.day}"),
-            "plays": sum(a["plays"] for a in albums),
-            "albums": albums,
-        })
+        shelf_list.append({**shelf, "albums": albums, "plays": sum(a["plays"] for a in albums)})
 
     last = played[-1] if played else None
     if last:
@@ -176,7 +175,7 @@ def build_view(raw_tracks):
         "user": USER,
         "now_playing": now_playing,
         "last_played": last,
-        "days": day_list,
+        "shelves": shelf_list,
         "total_plays": len(played),
         "hour": datetime.now(TZ).hour,
     }
@@ -236,6 +235,95 @@ def music():
     reply.headers["X-Cache"] = state
     reply.headers["Cache-Control"] = "no-store"
     return reply
+
+
+# --------------------------------------------------------------------------
+# Infos en plus sur un morceau ou un album (genres, durée, nombre d'écoutes…)
+# Ces réponses changent peu : on les garde 1 h, pour tous les visiteurs.
+# --------------------------------------------------------------------------
+
+INFO_SECONDS = 3600
+infos = OrderedDict()
+infos_lock = threading.Lock()
+TAG_SKIP = {"seen live", "favorites", "favourite", "french"}
+
+
+def clean_summary(text):
+    text = re.sub(r"<a [^>]*>.*?</a>", "", text or "")   # Last.fm ajoute « Read more on Last.fm »
+    text = re.sub(r"<[^>]+>", "", text).strip()
+    return text[:320] + ("…" if len(text) > 320 else "")
+
+
+def tags_of(block):
+    items = (block or {}).get("tag", [])
+    if isinstance(items, dict):
+        items = [items]
+    names = [t.get("name", "") for t in items]
+    return [n for n in names if n and n.lower() not in TAG_SKIP][:4]
+
+
+def cached_info(key, fetch):
+    with infos_lock:
+        hit = infos.get(key)
+        if hit and time.time() - hit[0] < INFO_SECONDS:
+            return hit[1]
+    stamp = time.time()
+    try:
+        value = fetch()
+    except (LastfmError, KeyError, TypeError, ValueError):
+        value = {}                                  # pas d'infos en plus : la page s'en passe…
+        stamp = time.time() - INFO_SECONDS + 120    # …et on ne réessaie pas avant 2 minutes
+    with infos_lock:
+        infos[key] = (stamp, value)
+        while len(infos) > 400:
+            infos.popitem(last=False)
+    return value
+
+
+def fetch_track_info(artist, track):
+    t = call_lastfm({"method": "track.getInfo", "artist": artist, "track": track,
+                     "username": USER, "autocorrect": 1})["track"]
+    duration = int(t.get("duration") or 0) // 1000
+    return {
+        "duration": duration or None,
+        "listeners": int(t.get("listeners") or 0),
+        "user_plays": int(t.get("userplaycount") or 0),
+        "tags": tags_of(t.get("toptags")),
+        "summary": clean_summary((t.get("wiki") or {}).get("summary")),
+    }
+
+
+def fetch_album_info(artist, album):
+    a = call_lastfm({"method": "album.getInfo", "artist": artist, "album": album,
+                     "username": USER, "autocorrect": 1})["album"]
+    tracks = (a.get("tracks") or {}).get("track", [])
+    if isinstance(tracks, dict):
+        tracks = [tracks]
+    wiki = a.get("wiki") or {}
+    return {
+        "listeners": int(a.get("listeners") or 0),
+        "user_plays": int(a.get("userplaycount") or 0),
+        "track_count": len(tracks) or None,
+        "released": (wiki.get("published") or "")[:11].strip() or None,
+        "tags": tags_of(a.get("tags")),
+        "summary": clean_summary(wiki.get("summary")),
+    }
+
+
+@app.get("/api/track")
+def track_info():
+    artist, track = request.args.get("artist", "")[:200], request.args.get("track", "")[:200]
+    if not API_KEY or not artist or not track:
+        return jsonify({})
+    return jsonify(cached_info(("track", artist.lower(), track.lower()), lambda: fetch_track_info(artist, track)))
+
+
+@app.get("/api/album")
+def album_info():
+    artist, album = request.args.get("artist", "")[:200], request.args.get("album", "")[:200]
+    if not API_KEY or not artist or not album:
+        return jsonify({})
+    return jsonify(cached_info(("album", artist.lower(), album.lower()), lambda: fetch_album_info(artist, album)))
 
 
 covers = OrderedDict()   # petites images gardées en mémoire (300 max)
