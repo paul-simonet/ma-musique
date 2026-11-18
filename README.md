@@ -2,7 +2,7 @@
 
 Mes écoutes Last.fm des 7 derniers jours, rangées dans une bibliothèque en noyer des années 70.
 
-- **La platine**, au centre, fait tourner le disque que j'écoute en ce moment. La pochette couvre tout le disque. En dessous, une fiche donne la durée, le nombre d'écoutes, les genres et un résumé, tirés de Last.fm. Quand rien ne joue, le bras se relève et la platine montre ma dernière écoute.
+- **La platine**, au centre, fait tourner le disque que j'écoute en ce moment. La pochette couvre tout le disque. En dessous, une fiche donne le morceau, l'artiste, l'album et au plus deux infos (durée, nombre de titres, genre), tirées de Deezer. Quand rien ne joue, le bras se relève et la platine montre ma dernière écoute.
 - **La bibliothèque** se lit comme un livre : casier de gauche puis de droite, étage par étage. Les disques remplissent toute la place et sont séparés par des **intercalaires** en carton. On range la bibliothèque de 4 façons, avec les boutons « Ranger par » :
   - **Heure** : dans l'ordre de la journée, un intercalaire par heure (`10h`, `11h`…) ;
   - **Genre** : un intercalaire par genre (`Rap/Hip Hop`, `Pop`…), donné par Deezer ;
@@ -29,6 +29,18 @@ Puis ouvrir <http://localhost:8080>.
 
 Sans fichier `.env`, l'appli démarre quand même, et la page explique qu'il manque la clé.
 
+## En ligne
+
+L'appli tourne sur <https://student20.wt.thomasjuldo.com>, derrière Caddy (HTTPS automatique).
+
+Sur le serveur, dans le dossier `ma-musique` (avec un `.env` créé sur place) :
+
+```sh
+docker compose -f compose.yaml -f compose.server.yaml up -d --build
+```
+
+`compose.server.yaml` ajoute Caddy, qui seul ouvre les ports 80 et 443, et retire le port 8080 de l'appli. Le `Caddyfile` envoie tout le trafic vers `web:8000`. Pour mettre à jour : `git pull`, puis la même commande.
+
 ## Comment ça marche
 
 ```
@@ -51,6 +63,7 @@ Navigateur ──► serveur Flask (Docker) ──► API Last.fm   (mes écoute
 | Fichier | Rôle |
 |---|---|
 | `compose.yaml` | Le service `web`, sur le port 8080 |
+| `compose.server.yaml`, `Caddyfile` | En plus, sur le serveur : Caddy devant l'appli, en HTTPS |
 | `app/server.py` | Le serveur : appels à Last.fm, cache, pochettes, erreurs |
 | `app/static/` | La page : `index.html`, `style.css`, `app.js` |
 | `.env.example` | Le modèle du fichier `.env`, sans la clé |

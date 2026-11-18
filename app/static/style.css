@@ -35,11 +35,6 @@ body {
 
 /* ---------- Enseigne ---------- */
 .top { display: flex; align-items: center; gap: 14px; height: clamp(56px, 9dvh, 76px); padding: 0 clamp(16px, 4vw, 48px); }
-.stripes { display: flex; flex-direction: column; gap: 4px; width: 56px; }
-.stripes i { height: 6px; border-radius: 3px; }
-.stripes i:nth-child(1) { background: var(--mustard); }
-.stripes i:nth-child(2) { background: var(--orange); }
-.stripes i:nth-child(3) { background: var(--brown); }
 h1 {
   margin: 0; font-size: clamp(28px, 3vw, 40px); line-height: 1; font-weight: 800; font-style: italic;
   font-variation-settings: "SOFT" 100, "WONK" 1; letter-spacing: -.02em;

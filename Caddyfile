@@ -1,0 +1,4 @@
+student20.wt.thomasjuldo.com {
+	encode gzip
+	reverse_proxy web:8000
+}

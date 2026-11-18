@@ -1,0 +1,23 @@
+# Seulement sur le serveur :
+#   docker compose -f compose.yaml -f compose.server.yaml up -d --build
+# Caddy reçoit le trafic (80/443, HTTPS automatique) et le passe à l'app.
+services:
+  web:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy-data:
+  caddy-config:
